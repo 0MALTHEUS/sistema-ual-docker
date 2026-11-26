@@ -1,0 +1,58 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ual_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-ual_db}"
+      POSTGRES_USER: "${POSTGRES_USER:-ual_admin}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-ual_local_pass_2026!}"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - ual_db_data:/var/lib/postgresql/data
+      - ./base_datos_ual_postgres.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    ports:
+      - "${DB_PORT_BIND:-127.0.0.1:5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ual_admin} -d ${POSTGRES_DB:-ual_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - ual_network
+
+  app:
+    image: ghcr.io/0maltheus/sistema-ual-docker:latest
+    container_name: ual_app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql+psycopg2://${POSTGRES_USER:-ual_admin}:${POSTGRES_PASSWORD:-ual_local_pass_2026!}@db:5432/${POSTGRES_DB:-ual_db}"
+      SECRET_KEY: "${SECRET_KEY:-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855}"
+      APP_PORT: 8080
+      APP_HOST: 0.0.0.0
+      APP_OPEN_BROWSER: "0"
+      APP_RELOAD: "0"
+      SINGLE_SESSION: "${SINGLE_SESSION:-0}"
+    ports:
+      - "${APP_PORT_BIND:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/api/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - ual_network
+
+volumes:
+  ual_db_data:
+    name: ual_db_data
+
+networks:
+  ual_network:
+    name: ual_network
+    driver: bridge
